@@ -11,6 +11,7 @@ def main() -> None:
     if not target_bitrate:
         target_bitrate = "1000"
     files = sorted(list(Path(rel2abs_path("", "exe")).glob("**/*.mp4")))
+    sizes = [1e-6, 0]
     e_files = []
     opt = {
         "c:v": "av1_amf",
@@ -36,6 +37,8 @@ def main() -> None:
         if v_bitrate < (int(target_bitrate) + 320) * 1e3:
             tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k)")
             pbar.update(1)
+            sizes[0] += file.stat().st_size
+            sizes[1] += file.stat().st_size
             continue
         if 192e3 < a_bitrate:
             opt["b:a"] = "192k"
@@ -55,6 +58,10 @@ def main() -> None:
         stream = ffmpeg.output(video, audio, str(tmp), **opt)
         ffmpeg.run(stream, overwrite_output=True, quiet=True)
         del stream, video, audio
+
+        sizes[0] += file.stat().st_size
+        sizes[1] += tmp.stat().st_size
+
         try:
             tmp.replace(file)
         except Exception:
@@ -64,6 +71,7 @@ def main() -> None:
     if e_files:
         for file, tmp in e_files:
             tmp.replace(file)
+    print(f"M: {sizes[0]/ (1024 ** 3):.2f}GB -> {sizes[1]/ (1024 ** 3):.2f}GB | {100-100*sizes[1]/sizes[0]:.1f}%圧縮")
 
 
 def rel2abs_path(filename, attr) -> str:
