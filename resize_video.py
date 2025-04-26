@@ -9,7 +9,7 @@ from tqdm import tqdm
 def main() -> None:
     target_bitrate = input("Target Bitrate (kbps): ")
     if not target_bitrate:
-        target_bitrate = "1800"
+        target_bitrate = "1000"
     files = sorted(list(Path(rel2abs_path("", "exe")).glob("**/*.mp4")))
     e_files = []
     opt = {
@@ -33,7 +33,7 @@ def main() -> None:
         a_bitrate = int(aprob.get("bit_rate", 192e3))
 
         # bitrate
-        if v_bitrate < (int(target_bitrate) + 192) * 1e3:
+        if v_bitrate < (int(target_bitrate) + 320) * 1e3:
             tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k)")
             pbar.update(1)
             continue
