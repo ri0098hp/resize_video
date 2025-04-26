@@ -1,0 +1,47 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "[python]": {
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+      },
+    },
+    "isort.args": [
+      "--profile",
+      "black"
+    ],
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python.autoComplete.extraPaths": [
+      "{$workspaceFolder}/.venv/Lib/site-packages",
+    ],
+    "python.analysis.extraPaths": [
+      "{$workspaceFolder}/.venv/Lib/site-packages"
+    ],
+    "python.analysis.completeFunctionParens": true,
+    "editor.formatOnSave": true, // 保存時にフォーマットをオンに
+    "editor.formatOnType": true, // タイピング時にフォーマットをオンに
+    "editor.formatOnPaste": false, // 貼り付け時のフォーマットはオフに
+    "python.terminal.activateEnvironment": true,
+    "black-formatter.args": [
+      "--line-length",
+      "119"
+    ],
+    "flake8.args": [
+      "--max-line-length",
+      "119",
+      "--extend-ignore",
+      "E203",
+    ],
+    "mypy-type-checker.args": [
+      "--ignore-missing-imports",
+      "--follow-imports=silent",
+      "--show-column-numbers",
+      "--check-untyped-defs"
+    ]
+  }
+}
