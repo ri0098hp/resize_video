@@ -1,8 +1,9 @@
 import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
-import ffmpeg
 from tqdm import tqdm
 
 
@@ -13,51 +14,85 @@ def main() -> None:
     files = sorted(list(Path(rel2abs_path("", "exe")).glob("**/*.mp4")))
     sizes = [1e-6, 0]
     e_files = []
-    opt = {
-        "c:v": "av1_amf",
-        "c:a": "copy",
-        "b:v": target_bitrate + "k",
-        "high_motion_quality_boost_enable": "true",
-        "loglevel": "error",
-    }
     pbar = tqdm(files, bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}", dynamic_ncols=True)
     for file in pbar:
         tmp = Path(str(file.stem) + "_tmp.mp4")
         pbar.set_description(str(file.name))
-        prob = ffmpeg.probe(file)
 
-        vprob: dict = next((stream for stream in prob["streams"] if stream["codec_type"] == "video"), {})
-        aprob: dict = next((stream for stream in prob["streams"] if stream["codec_type"] == "audio"), {})
-        v_bitrate = int(vprob.get("bit_rate", 10300e3))
-        width = int(vprob.get("width", 1280))
-        height = int(vprob.get("height", 720))
-        a_bitrate = int(aprob.get("bit_rate", 192e3))
+        # Get video and audio bitrates using ffprobe
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=bit_rate,width,height",
+            "-of",
+            "default=noprint_wrappers=1",
+            str(file),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        width, height, v_bitrate = [int(x.split("=")[1]) for x in result.stdout.splitlines()]
 
-        # bitrate
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=bit_rate",
+            "-of",
+            "default=noprint_wrappers=1",
+            str(file),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        a_bitrate = int(result.stdout.split("=")[1]) if result.stdout else 192e3
+
+        # vbitrate
         if v_bitrate < (int(target_bitrate) + 320) * 1e3:
             tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k)")
             pbar.update(1)
             sizes[0] += file.stat().st_size
             sizes[1] += file.stat().st_size
             continue
-        if 192e3 < a_bitrate:
-            opt["b:a"] = "192k"
 
-        stream = ffmpeg.input(file)
-        audio = stream.audio
-        video = stream.video
-
-        # # resize
+        # resize
+        scale_option = ""
         if max(width, height) > 1280:
             if width > height:
-                opt["vf"] = "scale=1280:-1"
+                scale_option = "scale=1280:-1"
             else:
-                opt["vf"] = "scale=-1:1280"
+                scale_option = "scale=-1:1280"
 
-        tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k) -> ({target_bitrate}k, 192k)")
-        stream = ffmpeg.output(video, audio, str(tmp), **opt)
-        ffmpeg.run(stream, overwrite_output=True, quiet=True)
-        del stream, video, audio
+        tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k) -> ({target_bitrate}k, {a_bitrate//1e3}k)")
+        cmd = [
+            "ffmpeg",
+            "-i",
+            str(file),
+            "-c:v",
+            "av1_amf",
+            "-preset",
+            "quality",
+            "-rc",
+            "vbr_peak",
+            "-b:v",
+            f"{target_bitrate}k",
+            "-c:a",
+            "copy",
+            "-b:a",
+            "192k",
+            "-high_motion_quality_boost_enable",
+            "true",
+            "-vf",
+            scale_option,
+            "-loglevel",
+            "error",
+            "-y",
+            str(tmp),
+        ]
+        subprocess.run(cmd)
 
         sizes[0] += file.stat().st_size
         sizes[1] += tmp.stat().st_size
@@ -66,12 +101,13 @@ def main() -> None:
             tmp.replace(file)
         except Exception:
             e_files.append((file, tmp))
-            pass
         pbar.update(1)
+
+    print(f"M: {sizes[0]/ (1024 ** 3):.2f}GB -> {sizes[1]/ (1024 ** 3):.2f}GB | {100-100*sizes[1]/sizes[0]:.1f}%圧縮")
+    time.sleep(10)
     if e_files:
         for file, tmp in e_files:
             tmp.replace(file)
-    print(f"M: {sizes[0]/ (1024 ** 3):.2f}GB -> {sizes[1]/ (1024 ** 3):.2f}GB | {100-100*sizes[1]/sizes[0]:.1f}%圧縮")
 
 
 def rel2abs_path(filename, attr) -> str:
