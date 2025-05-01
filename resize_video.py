@@ -1,16 +1,15 @@
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from tqdm import tqdm
 
 
 def main() -> None:
-    target_bitrate = input("Target Bitrate (kbps): ")
+    target_bitrate = int(input("Target Bitrate (kbps): "))
     if not target_bitrate:
-        target_bitrate = "1000"
+        target_bitrate = 1000
     files = sorted(list(Path(rel2abs_path("", "exe")).glob("**/*.mp4")))
     sizes = [1e-6, 0]
     e_files = []
@@ -51,7 +50,7 @@ def main() -> None:
         a_bitrate = int(result.stdout.split("=")[1]) if result.stdout else 192e3
 
         # vbitrate
-        if v_bitrate < (int(target_bitrate) + 320) * 1e3:
+        if v_bitrate < (target_bitrate + 320) * 1e3:
             tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k)")
             pbar.update(1)
             sizes[0] += file.stat().st_size
@@ -59,16 +58,15 @@ def main() -> None:
             continue
 
         # resize
-        scale_option = ""
         if max(width, height) > 1280:
-            if width > height:
-                scale_option = "scale=1280:-1"
-            else:
-                scale_option = "scale=-1:1280"
+            scale_option = "scale=1280:-1" if width > height else "scale=-1:1280"
+        else:
+            scale_option = ""
 
         tqdm.write(f"{file.name}: ({v_bitrate//1e3}k, {a_bitrate//1e3}k) -> ({target_bitrate}k, {a_bitrate//1e3}k)")
         cmd = [
             "ffmpeg",
+            "-y",
             "-i",
             str(file),
             "-c:v",
@@ -79,19 +77,30 @@ def main() -> None:
             "vbr_peak",
             "-b:v",
             f"{target_bitrate}k",
+            "-maxrate",
+            f"{1.5*target_bitrate}k",
             "-c:a",
             "copy",
-            "-b:a",
-            "192k",
+            "-aq_mode",
+            "caq",
+            "-g",
+            "600",
+            "-max_b_frames",
+            "3",
+            "-pa_adaptive_mini_gop",
+            "true",
+            "-pa_lookahead_buffer_depth",
+            "40",
+            "-pa_taq_mode",
+            "2",
             "-high_motion_quality_boost_enable",
             "true",
-            "-vf",
-            scale_option,
             "-loglevel",
             "error",
-            "-y",
-            str(tmp),
         ]
+        if scale_option:
+            cmd += ["-vf", scale_option]
+        cmd += [str(tmp)]
         subprocess.run(cmd)
 
         sizes[0] += file.stat().st_size
@@ -104,7 +113,6 @@ def main() -> None:
         pbar.update(1)
 
     print(f"M: {sizes[0]/ (1024 ** 3):.2f}GB -> {sizes[1]/ (1024 ** 3):.2f}GB | {100-100*sizes[1]/sizes[0]:.1f}%圧縮")
-    time.sleep(10)
     if e_files:
         for file, tmp in e_files:
             tmp.replace(file)
